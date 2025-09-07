@@ -62,6 +62,7 @@ def parse_msg(msg):
         #If msg is a byte or bytearray, .decode() converts it into text; otherwise, it is converted with str(msg).
         s = msg.decode() if isinstance(msg, (bytes, bytearray)) else str(msg)
         s = s.strip()
+        #With .lower we can sure that BLINK or Blink also will be accepted
         if s.lower() == "blink":
             return {"cmd": "blink"}
         return json.loads(s)
