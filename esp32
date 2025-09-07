@@ -1,0 +1,165 @@
+import network, time, machine, ubinascii, json
+from umqtt.simple import MQTTClient
+
+# ========= CONFIG =========
+WIFI_SSID = "YOUR_SSID"
+WIFI_PASS = "YOUR_PASSWORD"
+# Broker público de prueba (cámbialo si usas el tuyo)
+MQTT_HOST = "test.mosquitto.org"
+# Elige UNO de estos dos puertos:
+MQTT_PORT = 1883     # TCP sin TLS
+# MQTT_PORT = 8883   # TLS (si tu firmware soporta ssl=True)
+
+USE_TLS = False      # True si usas 8883 (TLS). Ojo: normalmente sin verificación de CA.
+TOPIC_SUB = b"d3b7f1a2e9/blog/led/blink"  # pon tu prefijo único
+CLIENT_PREFIX = b"esp32-"
+KEEPALIVE = 30
+
+LED_PIN = 2          # Cambia si tu placa no tiene LED en GPIO2
+BLINK_TIMES = 5
+ON_MS = 120
+OFF_MS = 120
+# =========================
+
+led = machine.Pin(LED_PIN, machine.Pin.OUT)
+led.off()
+
+def log(*args):
+    try:
+        print("[DBG]", *args)
+    except:
+        pass
+
+def wifi_connect():
+    sta = network.WLAN(network.STA_IF)
+    if not sta.active():
+        sta.active(True)
+    if not sta.isconnected():
+        log("Conectando WiFi a:", WIFI_SSID)
+        sta.connect(WIFI_SSID, WIFI_PASS)
+        for i in range(80):
+            if sta.isconnected():
+                break
+            time.sleep_ms(250)
+            if i % 8 == 0:
+                log("... esperando WiFi")
+    if not sta.isconnected():
+        raise RuntimeError("WiFi NO conectado")
+    log("WiFi OK:", sta.ifconfig())
+    return sta
+
+def blink(n=BLINK_TIMES, on=ON_MS, off=OFF_MS):
+    for _ in range(n):
+        led.on(); time.sleep_ms(on)
+        led.off(); time.sleep_ms(off)
+
+def parse_msg(msg):
+    # Acepta "blink" o JSON {"cmd":"blink","times":7,"on":100,"off":120}
+    try:
+        s = msg.decode() if isinstance(msg, (bytes, bytearray)) else str(msg)
+        s = s.strip()
+        if s.lower() == "blink":
+            return {"cmd": "blink"}
+        return json.loads(s)
+    except Exception as e:
+        log("parse_msg EXC:", e)
+        return {"cmd": "blink"}
+
+def on_mqtt(topic, msg):
+    log("MQTT RX topic=", topic, "msg=", msg)
+    data = parse_msg(msg)
+    if data.get("cmd") == "blink":
+        t = int(data.get("times", BLINK_TIMES))
+        on = int(data.get("on", ON_MS))
+        off = int(data.get("off", OFF_MS))
+        blink(t, on, off)
+
+def make_client():
+    cid = CLIENT_PREFIX + ubinascii.hexlify(machine.unique_id())
+    log("ClientID:", cid)
+    # Si usas usuario/clave, añade user=..., password=...
+    c = MQTTClient(client_id=cid,
+                   server=MQTT_HOST,
+                   port=MQTT_PORT,
+                   keepalive=KEEPALIVE,
+                   ssl=USE_TLS)
+    c.set_callback(on_mqtt)
+    # Last Will opcional (debug)
+    try:
+        c.set_last_will(b"%s/status" % cid, b"offline", retain=False, qos=0)
+    except:
+        pass
+    return c
+
+def mqtt_connect_and_subscribe(c):
+    while True:
+        try:
+            log("Conectando MQTT:", MQTT_HOST, MQTT_PORT, "TLS" if USE_TLS else "noTLS")
+            c.connect(clean_session=True)
+            log("MQTT conectado")
+            c.subscribe(TOPIC_SUB, qos=0)
+            log("Suscrito a:", TOPIC_SUB)
+            # Publica estado opcional
+            try:
+                c.publish(b"%s/status" % (CLIENT_PREFIX + ubinascii.hexlify(machine.unique_id())), b"online", retain=False, qos=0)
+            except:
+                pass
+            break
+        except Exception as e:
+            log("MQTT connect EXC:", e, "Reintentando en 1.5s...")
+            time.sleep_ms(1500)
+
+def main():
+    # 1) WiFi
+    try:
+        wifi_connect()
+    except Exception as e:
+        log("WiFi error:", e)
+        time.sleep(3)
+        machine.reset()
+
+    # 2) MQTT
+    client = make_client()
+    mqtt_connect_and_subscribe(client)
+
+    # Latido de arranque
+    blink(2, 80, 120)
+
+    last_ping = time.ticks_ms()
+
+    # 3) Loop principal
+    while True:
+        try:
+            # Procesa mensajes entrantes
+            client.check_msg()
+            # Mantén viva la conexión
+            if time.ticks_diff(time.ticks_ms(), last_ping) > (KEEPALIVE * 500):
+                try:
+                    client.ping()
+                    log("Ping")
+                except Exception as e:
+                    log("Ping EXC:", e)
+                last_ping = time.ticks_ms()
+            time.sleep_ms(50)
+
+        except OSError as e:
+            # Errores típicos de socket -> reintento completo
+            log("Loop OSError:", e, "— reconectando...")
+            try:
+                wifi_connect()
+            except Exception as e2:
+                log("WiFi reconexión fallo:", e2)
+            try:
+                client = make_client()
+                mqtt_connect_and_subscribe(client)
+            except Exception as e3:
+                log("MQTT reconexión fallo:", e3)
+                time.sleep_ms(1500)
+
+        except Exception as e:
+            log("Loop EXC:", e)
+            time.sleep_ms(500)
+
+# Arranque
+if __name__ == "__main__":
+    main()
