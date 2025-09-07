@@ -1,0 +1,48 @@
+<html>
+<head>
+  <meta charset="utf-8"></meta>
+  //Import the MQTT library from CDN of unpkg
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+</head>
+<body>
+  //Create a button
+  <button id="blinkBtn">Blink 🔆</button>
+  //Create a label where we can see the current state
+  <span id="status">Connecting</span>
+  
+  //we introduce a JavaScript block
+  <script>
+    //WSS protocol
+    const brokerUrl = 'wss://BROKER_HOST:8081';
+    const topicPrefix = 'YOUR_TOPIC_PREFIX';               
+    const topic = `${topicPrefix}YOUR_TOPIC`;
+
+    //Creation of the MQTT client in the web browser
+    const client = mqtt.connect(brokerUrl, {
+      clientId: 'web-' + Math.random().toString(16).slice(2),
+      clean: true,
+      reconnectPeriod: 2000,
+      keepalive: 30
+    });
+
+    const st = document.getElementById('status');
+    const btn = document.getElementById('blinkBtn');
+    btn.disabled = true;
+    
+    //In the following four lines, we are handling the MQTT client events in the browser
+    client.on('connect', () => { st.textContent='Connected'; btn.disabled=false; });
+    client.on('reconnect', () => st.textContent='Reconnecting...');
+    client.on('close', () => { st.textContent='Disconnected'; btn.disabled=true; });
+    client.on('error', (e) => { console.error(e); st.textContent='Connection error'; });
+    
+    //Here we have defined what happens when the button is pressed
+    btn.addEventListener('click', () => {
+      btn.disabled = true; st.textContent = 'Sending...';
+      client.publish(topic, 'blink', { qos: 0 }, (err) => {
+        st.textContent = err ? ('Failed: ' + err) : 'Blinking on site!';
+        setTimeout(() => { btn.disabled=false; st.textContent='Connected'; }, 1500);
+      });
+    });
+  </script>
+</body>
+</html>
