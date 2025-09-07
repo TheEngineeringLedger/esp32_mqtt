@@ -80,6 +80,7 @@ def on_mqtt(topic, msg):
         off = int(data.get("off", OFF_MS))
         blink(t, on, off)
 
+#define the function that creates the MQTT client and prepares it for the connection with the MQTT broker
 def make_client():
     cid = CLIENT_PREFIX + ubinascii.hexlify(machine.unique_id())
     log("ClientID:", cid)
