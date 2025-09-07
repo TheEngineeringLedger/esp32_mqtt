@@ -1,3 +1,5 @@
+#Here we are going to import everything necesary to connect the ESP32
+#to the internet, use the MQTT, and control the hardware.
 import network, time, machine, ubinascii, json
 from umqtt.simple import MQTTClient
 
@@ -22,12 +24,14 @@ OFF_MS = 120
 led = machine.Pin(LED_PIN, machine.Pin.OUT)
 led.off()
 
+#define a debugging helper function
 def log(*args):
     try:
         print("[DBG]", *args)
     except:
         pass
 
+#define a WiFi connection function
 def wifi_connect():
     sta = network.WLAN(network.STA_IF)
     if not sta.active():
@@ -46,13 +50,16 @@ def wifi_connect():
     log("WiFi OK:", sta.ifconfig())
     return sta
 
+#define the function that makes the LED blink.
 def blink(n=BLINK_TIMES, on=ON_MS, off=OFF_MS):
     for _ in range(n):
         led.on(); time.sleep_ms(on)
         led.off(); time.sleep_ms(off)
 
+#define the function that turns the MQTT message into something our code can understand.
 def parse_msg(msg):
     try:
+        #If msg is a byte or bytearray, .decode() converts it into text; otherwise, it is converted with str(msg).
         s = msg.decode() if isinstance(msg, (bytes, bytearray)) else str(msg)
         s = s.strip()
         if s.lower() == "blink":
