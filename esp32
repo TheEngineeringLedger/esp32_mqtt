@@ -116,6 +116,7 @@ def mqtt_connect_and_subscribe(c):
             log("MQTT connect EXC:", e, "Retrying in 1.5sec...")
             time.sleep_ms(1500)
 
+#define the function that kicks off the party ;)
 def main():
     # 1) WiFi
     try:
@@ -168,5 +169,6 @@ def main():
             time.sleep_ms(500)
 
 # Start-up
+#just for be sure that will start main.py and not boot.py
 if __name__ == "__main__":
     main()
