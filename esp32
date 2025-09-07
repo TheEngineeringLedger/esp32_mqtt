@@ -97,6 +97,7 @@ def make_client():
         pass
     return c
 
+#define the function that connects the ESP32 to the broker and subscribes it to the correct topic
 def mqtt_connect_and_subscribe(c):
     while True:
         try:
@@ -106,6 +107,7 @@ def mqtt_connect_and_subscribe(c):
             c.subscribe(TOPIC_SUB, qos=0)
             log("Subscribed to:", TOPIC_SUB)
             try:
+                #this isn’t necessary, but it’s interesting — just a way to say: I’m alive
                 c.publish(b"%s/status" % (CLIENT_PREFIX + ubinascii.hexlify(machine.unique_id())), b"online", retain=False, qos=0)
             except:
                 pass
